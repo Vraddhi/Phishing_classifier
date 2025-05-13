@@ -36,3 +36,5 @@ print(f"Test Accuracy: {test_acc*100:.2f}%")
 # Save model and vectorizer
 joblib.dump(model, "models/phishing_model.pkl")
 joblib.dump(vectorizer, "models/vectorizer.pkl")
+
+
