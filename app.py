@@ -6,6 +6,8 @@ import imaplib
 import email
 from email.header import decode_header
 import re
+from email.utils import parsedate_to_datetime
+from datetime import datetime
 nltk.download('stopwords')
 
 app = Flask(__name__)
@@ -70,8 +72,26 @@ def fetch_emails():
         _, messages = mail.search(None, "ALL")
         email_list = []
         
+        # Get all email numbers and fetch their dates
+        email_nums = messages[0].split()
+        email_dates = []
+        
+        # First pass: get all emails and their dates
+        for num in email_nums:
+            _, msg = mail.fetch(num, "(RFC822)")
+            email_message = email.message_from_bytes(msg[0][1])
+            date_str = email_message["date"]
+            try:
+                date = parsedate_to_datetime(date_str)
+            except:
+                date = datetime.now()  # fallback to current time if date parsing fails
+            email_dates.append((num, date))
+        
+        # Sort by date in descending order (newest first)
+        email_dates.sort(key=lambda x: x[1], reverse=True)
+        
         # Get the last 10 emails
-        for num in messages[0].split()[-10:]:
+        for num, _ in email_dates[:10]:
             _, msg = mail.fetch(num, "(RFC822)")
             email_message = email.message_from_bytes(msg[0][1])
             
