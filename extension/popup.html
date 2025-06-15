@@ -10,9 +10,13 @@
 </head>
 <body>
   <h3>Email Classifier</h3>
-  <textarea id="emailText" placeholder="Paste email here..."></textarea>
-  <button id="checkBtn">Check</button>
-  <p id="result"></p>
+  <button id="fetchEmailBtn">Fetch Last Email</button>
+  <div id="emailDetails" style="margin-top: 10px;">
+    <strong>From:</strong> <span id="fromEmail"></span><br>
+    <strong>Subject:</strong> <span id="subjectEmail"></span><br>
+    <strong>Body:</strong> <span id="bodyEmail"></span>
+  </div>
+  <p id="result" style="font-weight: bold; margin-top: 10px;"></p>
 
   <script src="popup.js"></script>
 </body>
