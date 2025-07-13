@@ -1,32 +1,59 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pickle
+import joblib
 import nltk
 import imaplib
 import email
 from email.header import decode_header
 import re
+import string
+import numpy as np
 from email.utils import parsedate_to_datetime
 from datetime import datetime
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from scipy.sparse import hstack
+
 nltk.download('stopwords')
+nltk.download('wordnet')
 
 app = Flask(__name__)
 CORS(app)
 
-# Load model and vectorizer
-with open("model/model.pkl", "rb") as f:
-    model = pickle.load(f)
+# Load model, vectorizer, and label encoder
+model = joblib.load("model/model.pkl")
+tfidf = joblib.load("model/vectorizer.pkl")
+label_encoder = joblib.load("model/label_encoder.pkl")
 
-with open("model/vectorizer.pkl", "rb") as f:
-    vectorizer = pickle.load(f)
+# Setup NLTK
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
 
-# Clean function
+# Clean function (matching spamming.py)
 def clean_text(text):
     if text is None:
         return ''
     text = text.lower()
-    stopwords = nltk.corpus.stopwords.words('english')
-    return ' '.join([word for word in text.split() if word not in stopwords])
+    text = re.sub(r"http\S+|www\S+|https\S+", '', text)
+    text = re.sub(r'\@w+|\#', '', text)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    tokens = text.split()
+    tokens = [lemmatizer.lemmatize(w) for w in tokens if w not in stop_words]
+    return ' '.join(tokens)
+
+# Custom features function (matching spamming.py)
+def extract_features(text):
+    text = text.lower()
+    return [
+        int(any(w in text for w in ['pdf', 'zip', 'doc', 'invoice', 'attachment'])),  # has_attachment
+        int(any(w in text for w in ['urgent', 'immediately', 'reset', 'verify', 'click'])),  # has_urgency
+        int(any(w in text for w in ['dear user', 'sir', 'madam', 'hello', 'supriya'])),  # has_salutation
+        text.count("http"),  # number of links
+        text.count("!"),  # exclamations
+        sum(1 for w in text.split() if w.isupper() and len(w) > 1),  # ALL CAPS words
+        len(text),  # total length
+        len(text.split())  # word count
+    ]
 
 def decode_email_subject(subject):
     decoded_subject = decode_header(subject)
@@ -100,18 +127,26 @@ def fetch_emails():
             from_addr = email.utils.parseaddr(email_message["from"])[1]
             body = get_email_body(email_message)
             
-            # Clean and analyze the email
+            # Clean and analyze the email (matching spamming.py)
             cleaned = clean_text(body)
-            vect = vectorizer.transform([cleaned])
-            probas = model.predict_proba(vect)[0]
+            X_new_tfidf = tfidf.transform([cleaned])
+            X_new_feat = np.array([extract_features(body)])
+            X_new = hstack([X_new_tfidf, X_new_feat])
+            
+            probs = model.predict_proba(X_new)[0]
+            phishing_index = list(label_encoder.classes_).index('Phishing Email')
+            phishing_conf = probs[phishing_index] * 100
+            safe_conf = (1 - probs[phishing_index]) * 100
+            
+            pred_label = 'Phishing Email' if probs[phishing_index] > 0.6 else 'Safe Email'
             
             email_list.append({
                 "from": from_addr,
                 "subject": subject,
                 "body": body,
-                "prediction": "Phishing Email" if probas[1] > 0.5 else "Safe Email",
-                "phishing_probability": round(probas[1] * 100, 2),
-                "safe_probability": round(probas[0] * 100, 2)
+                "prediction": pred_label,
+                "phishing_probability": float(round(phishing_conf, 2)),
+                "safe_probability": float(round(safe_conf, 2))
             })
         
         mail.close()
@@ -132,23 +167,30 @@ def fetch_emails():
 def predict():
     data = request.get_json()
     email_text = data.get("email", "")
+    
+    if len(email_text.split()) <= 5:
+        return jsonify({
+            "prediction": "Safe Email",
+            "phishing_probability": 0.0,
+            "safe_probability": 100.0
+        })
+    
     cleaned = clean_text(email_text)
-    vect = vectorizer.transform([cleaned])
+    X_new_tfidf = tfidf.transform([cleaned])
+    X_new_feat = np.array([extract_features(email_text)])
+    X_new = hstack([X_new_tfidf, X_new_feat])
 
-    probas = model.predict_proba(vect)[0]  # [safe_prob, phishing_prob]
-    phishing_prob = probas[1]
-    safe_prob = probas[0]
+    probs = model.predict_proba(X_new)[0]
+    phishing_index = list(label_encoder.classes_).index('Phishing Email')
+    phishing_conf = probs[phishing_index] * 100
+    safe_conf = (1 - probs[phishing_index]) * 100
 
-    # Round to percentage
-    phishing_percent = round(phishing_prob * 100, 2)
-    safe_percent = round(safe_prob * 100, 2)
-
-    label = "Phishing Email" if phishing_prob > 0.5 else "Safe Email"
+    pred_label = 'Phishing Email' if probs[phishing_index] > 0.6 else 'Safe Email'
 
     return jsonify({
-        "prediction": label,
-        "phishing_probability": phishing_percent,
-        "safe_probability": safe_percent
+        "prediction": pred_label,
+        "phishing_probability": float(round(phishing_conf, 2)),
+        "safe_probability": float(round(safe_conf, 2))
     })
 
 if __name__ == "__main__":
