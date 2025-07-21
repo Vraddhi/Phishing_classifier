@@ -1,4 +1,4 @@
-##🛡️ Phishing Email Detection using NLP
+## Phishing Email Detection using NLP 🛡️
 
 This project detects phishing emails using Natural Language Processing (NLP) and machine learning models, integrated with a Flask backend, Chrome extension, and automatic Gmail inbox scanning via IMAP.
 
@@ -14,20 +14,20 @@ This project detects phishing emails using Natural Language Processing (NLP) and
 
 
 
-## 🛠️ Setup Instructions
+##  Setup Instructions🛠️
 
-### 1.  Install Dependencies
+## 1.  Install Dependencies
 
 
 pip install -r requirements.txt
 
 
-##2.  Train the Model
+## 2.  Train the Model
 
 python3 spamming.py
 This trains a RandomForestClassifier with TfidfVectorizer and saves them to /model/.
 
-##3.  Run Flask API
+## 3.  Run Flask API
 
 python3 app.py
 By default, the Flask API runs at http://127.0.0.1:5000/.
